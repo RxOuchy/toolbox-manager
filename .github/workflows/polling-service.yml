@@ -1,0 +1,50 @@
+name: Build Polling Service
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "polling-v*"
+    paths:
+      - "polling-service/**"
+      - ".github/workflows/polling-service.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Publish win-x64 + upload artifact
+    runs-on: windows-latest
+    permissions:
+      contents: write   # for release uploads
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish
+        run: |
+          dotnet publish polling-service/src/ToolboxManager.PollingService/ToolboxManager.PollingService.csproj `
+            -c Release -r win-x64 --self-contained false `
+            -o publish/PollingService
+
+      - name: Zip
+        run: |
+          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ github.sha }}".Substring(0,7) }
+          Compress-Archive -Path publish/PollingService/* -DestinationPath "polling-service-$version.zip"
+          echo "ZIP_NAME=polling-service-$version.zip" >> $env:GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: polling-service
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 30
+
+      - name: Attach to release (tag pushes only)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          generate_release_notes: true
