@@ -19,6 +19,14 @@ public sealed class PollingOptions
     /// <summary>
     /// Root folder under which registered executables must live. Acts as a hard
     /// boundary so the API can't ask us to run "C:\Windows\System32\reg.exe".
+    /// Also the root scanned by <c>ApplicationScanner</c> for auto-discovery.
     /// </summary>
     public string ExecutablesRoot { get; set; } = "C:\\ToolboxApps";
+
+    /// <summary>
+    /// How often the discovery scanner walks <see cref="ExecutablesRoot"/>
+    /// looking for new applications with an "Application Settings" manifest
+    /// in their README. Set to 0 or negative to effectively disable.
+    /// </summary>
+    public int AppScanIntervalSeconds { get; set; } = 60;
 }

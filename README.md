@@ -4,10 +4,10 @@ A universal web UI for running custom-built C# console applications through a pa
 
 ## What it does
 
-1. A user opens the **Web UI** and registers a console application: its name, where the executable lives on the host, what parameters it accepts, and which of those parameters are required.
-2. To run the application, the user fills the declared parameters in a generated form and clicks **Run**.
+1. A developer publishes a console application to the host (e.g. `C:\ToolboxApps\MyTool\`) with a `README.md` containing an `## Application Settings` JSON block. Within a minute the **Polling Service** discovers it and registers it via the API — no manual setup. (Apps can also be registered by hand through the UI if you prefer.)
+2. A user opens the **Web UI**, sees the registered app, fills the declared parameters in a generated form, and clicks **Run**.
 3. The **API** persists the run request and publishes a message to **AWS SQS**.
-4. A **Polling Service** running on the host Windows machine consumes the SQS message, executes the registered executable under a manually-provisioned **gMSA service account**, captures stdout/stderr, and reports the result back via the API.
+4. The **Polling Service** running on the host Windows machine consumes the SQS message, executes the registered executable under a manually-provisioned **gMSA service account**, captures stdout/stderr, and reports the result back via the API.
 5. All components emit structured logs through **NLog**. In local dev these are aggregated in a **Seq** container with search; in production they ship to **New Relic**.
 
 ## Architecture
@@ -96,6 +96,7 @@ To register the included [sample app](sample-apps/EchoTool/), follow the walkthr
 - **SQS decouples** the API (cloud) from the executor (on-prem) without requiring inbound firewall holes — the on-prem host only needs outbound HTTPS to AWS.
 - **gMSA** lets the executor authenticate to on-prem databases under a managed AD identity without storing passwords.
 - **One execution host** keeps the operational model simple: any console app you want to run goes on that machine, and the Polling Service is the only thing that can launch it.
+- **Auto-discovery via README manifest** — drop a tool onto the host with an `## Application Settings` block in its README and the polling service registers it automatically. No deploy-then-manually-configure step. See [polling-service/README.md](polling-service/README.md#auto-discovery).
 - **NLog + Seq locally, New Relic in prod** — same log calls, different sinks, no code change.
 
 ## License

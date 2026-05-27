@@ -17,6 +17,76 @@ ReceiveMessage (long-poll 20s)
 
 Concurrency is bounded by `Polling.MaxConcurrentRuns` (default 2). The SQS visibility timeout is sized to comfortably exceed the longest expected execution.
 
+## Auto-discovery
+
+Alongside the SQS worker, an `ApplicationScanner` periodically walks `Polling.ExecutablesRoot` and registers any new applications found there. This means dropping a tool onto the host is enough to make it appear in the UI — no manual registration step.
+
+```
+ApplicationScanner (every AppScanIntervalSeconds, default 60s)
+  └─ for each subdirectory of ExecutablesRoot:
+     ├─ read README.md (skip if missing)
+     ├─ parse "Application Settings" JSON manifest (skip if absent)
+     ├─ verify the executable file exists on disk
+     ├─ GET /api/applications — if Name is already taken, skip
+     └─ POST /api/applications with the manifest
+```
+
+### Manifest format
+
+Each application directory must contain a `README.md` with an `## Application Settings` heading followed by a fenced JSON block:
+
+````markdown
+## Application Settings
+
+```json
+{
+  "name": "MyTool",
+  "description": "What this tool does (shown in the UI).",
+  "executable": "MyTool.exe",
+  "timeoutSeconds": 300,
+  "parameters": [
+    {
+      "name": "--config",
+      "label": "Config file",
+      "type": "string",
+      "required": true,
+      "default": "config.json",
+      "description": "Path to the JSON config the tool reads.",
+      "order": 1
+    },
+    {
+      "name": "--verbose",
+      "label": "Verbose",
+      "type": "flag",
+      "order": 2
+    }
+  ]
+}
+```
+````
+
+| Field | Required | Default | Notes |
+|-------|----------|---------|-------|
+| `name`             | **yes** | — | Unique. Used as the API record's name and as the UI label. |
+| `description`      | no  | `""`           | Surfaced in the UI. |
+| `executable`       | no  | `{name}.exe`   | Resolved relative to the directory the README is in. |
+| `workingDirectory` | no  | the README's directory | Override only if the tool insists on running from elsewhere. |
+| `timeoutSeconds`   | no  | `300`          | Per-run wall-clock limit. |
+| `parameters[].name`     | **yes** | — | The CLI flag itself, e.g. `--config`. |
+| `parameters[].label`    | no  | same as `name` | Form label in the UI. |
+| `parameters[].type`     | no  | `"string"`     | `string` / `number` / `boolean` / `flag` / `secret`. |
+| `parameters[].required` | no  | `false`        | If true, the UI marks it required and the API rejects runs that omit it. |
+| `parameters[].default`  | no  | —              | Pre-filled in the UI form. |
+| `parameters[].order`    | no  | array index    | UI display order. |
+
+### Behaviour
+
+- **Register-only.** Once an app is in the database the scanner never touches it again — edits go through the UI. To re-register a renamed/replaced tool, deactivate the old one in the UI first.
+- **Skips broken manifests.** If the JSON fails to parse, the executable is missing, or the manifest has no `name`, the scanner logs a warning and moves on (it never crashes the polling service).
+- **Honors gMSA + allow-list.** Scanned executables are still subject to the `ExecutablesRoot` allow-list at run time, and run under the same gMSA as everything else.
+
+See [sample-apps/EchoTool/README.md](../sample-apps/EchoTool/README.md) for a complete working example.
+
 ## Security guard rail
 
 `Polling.ExecutablesRoot` is an allow-list prefix. Any `executablePath` not under that root is refused with a `Failed` status — the API can't ask this service to launch `C:\Windows\System32\reg.exe` even if a registered app pointed there.
@@ -43,7 +113,8 @@ See [appsettings.json](src/ToolboxManager.PollingService/appsettings.json). Over
 | `Polling:WaitTimeSeconds`     | `20` | SQS long-poll wait (max 20) |
 | `Polling:MaxConcurrentRuns`   | `2` | Parallel executions on this host |
 | `Polling:VisibilityTimeoutSeconds` | `600` | Must exceed longest expected run |
-| `Polling:ExecutablesRoot`     | `C:\ToolboxApps` | Allow-list root for executable paths |
+| `Polling:ExecutablesRoot`     | `C:\ToolboxApps` | Allow-list root for executable paths and scan root |
+| `Polling:AppScanIntervalSeconds` | `60` | How often the discovery scanner re-walks `ExecutablesRoot` |
 
 ## Local development
 

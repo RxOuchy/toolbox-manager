@@ -50,6 +50,7 @@ Per the user spec, all registered apps live on a single Windows machine and run 
 
 - Simple ops model — one machine to harden, one filesystem to manage, one gMSA to provision.
 - A single allow-list root (`Polling.ExecutablesRoot`) is enough to prevent the API from asking the service to run anything off-list.
+- The same root doubles as the discovery surface: the polling service scans it every `AppScanIntervalSeconds` (default 60s) and registers any new tool whose README contains an `## Application Settings` JSON manifest. Deploying a tool = creating its directory; no human registers it in the UI.
 
 ### gMSA
 

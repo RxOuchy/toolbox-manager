@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NLog;
 using NLog.Extensions.Logging;
 using ToolboxManager.PollingService;
 using ToolboxManager.PollingService.Options;
@@ -58,8 +59,16 @@ try
         http.Timeout = TimeSpan.FromSeconds(opts.ApiCallbackTimeoutSeconds);
     });
 
+    builder.Services.AddHttpClient<IApplicationDiscoveryClient, ApplicationDiscoveryClient>((sp, http) =>
+    {
+        var opts = sp.GetRequiredService<IOptions<PollingOptions>>().Value;
+        http.BaseAddress = new Uri(opts.ApiBaseUrl);
+        http.Timeout = TimeSpan.FromSeconds(opts.ApiCallbackTimeoutSeconds);
+    });
+
     builder.Services.AddSingleton<IProcessExecutor, ProcessExecutor>();
     builder.Services.AddHostedService<Worker>();
+    builder.Services.AddHostedService<ApplicationScanner>();
 
     // Run as a Windows Service when launched from the Service Control Manager.
     builder.Services.AddWindowsService(o => o.ServiceName = "ToolboxManagerPollingService");
