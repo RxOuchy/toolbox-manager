@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using ToolboxManager.Api.Data;
 
@@ -22,15 +23,16 @@ public sealed class MigrationRunner
 
     public async Task ApplyAsync(CancellationToken ct = default)
     {
-        await _db.Database.OpenConnectionAsync(ct);
+        var conn = _db.Database.GetDbConnection();
+        await conn.OpenAsync(ct);
         try
         {
-            await EnsureTrackingTableAsync(ct);
+            await EnsureTrackingTableAsync(conn, ct);
 
             var migrationsPath = Path.Combine(AppContext.BaseDirectory, MigrationsFolder);
             if (!Directory.Exists(migrationsPath))
             {
-                _logger.LogWarning("Migrations folder {Path} not found — skipping.", migrationsPath);
+                _logger.LogWarning("Migrations folder {Path} not found - skipping.", migrationsPath);
                 return;
             }
 
@@ -38,7 +40,7 @@ public sealed class MigrationRunner
                 .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var applied = await GetAppliedVersionsAsync(ct);
+            var applied = await GetAppliedVersionsAsync(conn, ct);
 
             foreach (var file in files)
             {
@@ -52,17 +54,18 @@ public sealed class MigrationRunner
                 _logger.LogInformation("Applying migration {Version}", version);
                 var sql = await File.ReadAllTextAsync(file, ct);
 
-                await using var tx = await _db.Database.BeginTransactionAsync(ct);
-                await using (var cmd = _db.Database.GetDbConnection().CreateCommand())
+                await using var tx = await conn.BeginTransactionAsync(ct);
+
+                await using (var cmd = conn.CreateCommand())
                 {
-                    cmd.Transaction = tx.GetDbTransaction();
+                    cmd.Transaction = tx;
                     cmd.CommandText = sql;
                     await cmd.ExecuteNonQueryAsync(ct);
                 }
 
-                await using (var cmd = _db.Database.GetDbConnection().CreateCommand())
+                await using (var cmd = conn.CreateCommand())
                 {
-                    cmd.Transaction = tx.GetDbTransaction();
+                    cmd.Transaction = tx;
                     cmd.CommandText = "INSERT INTO schema_migrations (version, applied_at) VALUES (@v, now())";
                     var p = cmd.CreateParameter();
                     p.ParameterName = "v";
@@ -77,13 +80,13 @@ public sealed class MigrationRunner
         }
         finally
         {
-            await _db.Database.CloseConnectionAsync();
+            await conn.CloseAsync();
         }
     }
 
-    private async Task EnsureTrackingTableAsync(CancellationToken ct)
+    private static async Task EnsureTrackingTableAsync(DbConnection conn, CancellationToken ct)
     {
-        await using var cmd = _db.Database.GetDbConnection().CreateCommand();
+        await using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 version    varchar(200) PRIMARY KEY,
@@ -92,11 +95,11 @@ public sealed class MigrationRunner
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    private async Task<HashSet<string>> GetAppliedVersionsAsync(CancellationToken ct)
+    private static async Task<HashSet<string>> GetAppliedVersionsAsync(DbConnection conn, CancellationToken ct)
     {
         var applied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        await using var cmd = _db.Database.GetDbConnection().CreateCommand();
+        await using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT version FROM schema_migrations";
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -105,12 +108,4 @@ public sealed class MigrationRunner
 
         return applied;
     }
-}
-
-// Helper to grab the raw DbTransaction off an EF Core IDbContextTransaction.
-file static class TransactionExtensions
-{
-    public static System.Data.Common.DbTransaction GetDbTransaction(this Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction tx)
-        => (tx as Microsoft.EntityFrameworkCore.Storage.IInfrastructure<System.Data.Common.DbTransaction>)?.Instance
-           ?? throw new InvalidOperationException("Underlying DbTransaction unavailable.");
 }

@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Amazon.Runtime;
 using Amazon.SQS;
 using Microsoft.EntityFrameworkCore;
+using NLog;
 using NLog.Web;
 using ToolboxManager.Api.Data;
 using ToolboxManager.Api.Options;

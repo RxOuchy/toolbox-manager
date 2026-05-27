@@ -74,9 +74,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_applications_touch ON applications;
 CREATE TRIGGER trg_applications_touch       BEFORE UPDATE ON applications
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+DROP TRIGGER IF EXISTS trg_parameters_touch ON application_parameters;
 CREATE TRIGGER trg_parameters_touch         BEFORE UPDATE ON application_parameters
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+DROP TRIGGER IF EXISTS trg_runs_touch ON run_requests;
 CREATE TRIGGER trg_runs_touch               BEFORE UPDATE ON run_requests
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();

@@ -98,7 +98,7 @@ public sealed class ProcessExecutor : IProcessExecutor
                 request.RunRequestId, process.ExitCode, status, (completedAt - startedAt).TotalSeconds);
 
             return new ProcessExecutionResult(status, process.ExitCode, stdout.ToString(), stderr.ToString(),
-                errorMessage: null, startedAt, completedAt);
+                ErrorMessage: null, startedAt, completedAt);
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
